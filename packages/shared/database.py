@@ -1,6 +1,9 @@
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, sessionmaker
+
+JSONType = JSONB().with_variant(JSON(), "sqlite")
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./codeatlas.db")
 

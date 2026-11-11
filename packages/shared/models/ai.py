@@ -2,7 +2,7 @@ import uuid
 from sqlalchemy import Column, String, ForeignKey, DateTime, Text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
-from packages.shared.database import Base
+from packages.shared.database import Base, JSONType
 
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
@@ -18,7 +18,7 @@ class ChatMessage(Base):
     session_id = Column(UUID(as_uuid=True), ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False)
     role = Column(String, nullable=False) # user, assistant
     content = Column(Text, nullable=False)
-    evidence = Column(JSONB, nullable=True)
+    evidence = Column(JSONType, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 # Embedding model will be created later with pgvector

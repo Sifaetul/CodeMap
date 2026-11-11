@@ -2,7 +2,7 @@ import uuid
 from sqlalchemy import Column, String, ForeignKey, Float, Text, Integer
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
-from packages.shared.database import Base
+from packages.shared.database import Base, JSONType
 
 class ApiEndpoint(Base):
     __tablename__ = "api_endpoints"
@@ -49,5 +49,5 @@ class AnalysisFinding(Base):
     type = Column(String, nullable=False)
     severity = Column(String, nullable=False)
     description = Column(Text, nullable=False)
-    evidence = Column(JSONB, nullable=True)
+    evidence = Column(JSONType, nullable=True)
     confidence = Column(Float, default=1.0)

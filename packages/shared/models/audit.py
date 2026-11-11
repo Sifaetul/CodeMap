@@ -2,7 +2,7 @@ import uuid
 from sqlalchemy import Column, String, ForeignKey, DateTime, Text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
-from packages.shared.database import Base
+from packages.shared.database import Base, JSONType
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
@@ -10,5 +10,5 @@ class AuditLog(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
     action = Column(String, nullable=False)
-    details = Column(JSONB, nullable=True)
+    details = Column(JSONType, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -3,9 +3,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from apps.api.main import app
-from packages.shared.database import Base, get_db
+from apps.api.main import app, limiter
+from apps.api.core.deps import get_db
+from packages.shared.database import Base
 from packages.shared.models import User
+
+limiter.enabled = False
 
 # In-memory SQLite for testing
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
