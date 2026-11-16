@@ -16,12 +16,15 @@
 - [x] 2.4 Verification & Cross-check: 20/20 Unit/Integration tests passing in Docker test runner
 - [x] 2.5 Frontend TypeScript compilation verified 100% clean
 
-## Phase 3: AI Intelligence (Real Vector RAG & Streaming) [PENDING USER REVIEW]
-- [ ] 3.1 Real RAG pipeline using embeddings and provider
-- [ ] 3.2 Chat session and message persistence in PostgreSQL
-- [ ] 3.3 Streaming responses for chat
+## Phase 3: AI Intelligence (Real Vector RAG & Streaming) [COMPLETED]
+- [x] 3.1 Real RAG Context Retriever & Prompt Builder (`packages/shared/ai/retriever.py`)
+- [x] 3.2 Ollama LLM provider with token-by-token streaming & intelligent AST fallback (`packages/shared/ai/provider.py`)
+- [x] 3.3 Chat persistence: Sessions and Messages saved to PostgreSQL (`ChatSession` & `ChatMessage`)
+- [x] 3.4 Streaming endpoint (`POST /chat/stream`) with Server-Sent Events (SSE)
+- [x] 3.5 Conversation history endpoints (`GET/DELETE /chat/messages`) & frontend auto-restore on mount
+- [x] 3.6 Verification & Cross-check: 23/23 Unit/Integration tests passing (100% Pass Rate)
 
-## Phase 4: UI/UX & Frontend Polish [PENDING]
+## Phase 4: UI/UX & Frontend Polish [PENDING USER REVIEW]
 - [ ] 4.1 Unify design system & theme across dashboard and graph
 - [ ] 4.2 React Flow performance optimization (LOD, style cleanup)
 - [ ] 4.3 Rich code viewer with syntax highlighting in node details panel

@@ -56,6 +56,30 @@ export default function ArchitecturePage({ params }: { params: { id: string } })
   const [currentMessage, setCurrentMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
 
+  useEffect(() => {
+    const fetchHistory = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/projects/${params.id}/chat/messages`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const history = await res.json();
+          if (history.length > 0) {
+            setChatMessages(history.map((m: any) => ({
+              role: m.role === 'user' ? 'user' : 'ai',
+              text: m.content
+            })));
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load chat history', err);
+      }
+    };
+    fetchHistory();
+  }, [params.id]);
+
   const sendMessage = async () => {
     if (!currentMessage.trim()) return;
     const newMsg = currentMessage;
