@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Compass, ArrowLeft, GitBranch, Upload, Layers, MessageSquare, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function ProjectDetailsPage({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -19,11 +20,15 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
       const token = localStorage.getItem('token');
       if (!token) return router.push('/login');
       
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/projects/${params.id}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) setProject(await res.json());
-      else router.push('/projects');
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/projects/${params.id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) setProject(await res.json());
+        else router.push('/projects');
+      } catch (err) {
+        console.error(err);
+      }
     };
     fetchProject();
   }, [params.id, router]);
@@ -42,7 +47,6 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Import failed');
 
-      alert('Repository imported and analyzed successfully! Redirecting to Architecture Map...');
       router.push(`/projects/${params.id}/architecture`);
     } catch (err: any) {
       setError(err.message);
@@ -75,7 +79,6 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
       if (!res.ok) throw new Error(data.detail || 'Upload failed');
 
       setUploadedFile(file.name);
-      alert('ZIP Repository uploaded and analyzed successfully! Redirecting to Architecture Map...');
       router.push(`/projects/${params.id}/architecture`);
     } catch (err: any) {
       setError(err.message);
@@ -107,93 +110,138 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
     if (file) uploadFile(file);
   };
 
-  if (!project) return <div className="p-8">Loading...</div>;
+  if (!project) {
+    return (
+      <div className="min-h-screen bg-[#090d16] flex items-center justify-center text-slate-400">
+        Loading project details...
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] p-8 font-sans text-gray-800">
-      <div className="max-w-4xl mx-auto space-y-8">
-        <header className="flex justify-between items-center">
-          <div>
-            <Link href="/projects" className="text-sm text-gray-400 hover:text-gray-700 mb-2 inline-block">← Back to Projects</Link>
-            <h1 className="text-3xl font-medium text-gray-900">{project.name}</h1>
-            <p className="text-gray-500 mt-2">{project.description || 'No description'}</p>
-          </div>
-          <div className="flex space-x-4">
-            <Link href={`/projects/${params.id}/architecture`} className="px-6 py-2 bg-white border border-gray-200 text-gray-900 rounded-full font-medium hover:bg-gray-50 transition">
-              Architecture Map
-            </Link>
-            <Link href={`/projects/${params.id}/chat`} className="px-6 py-2 bg-gray-900 text-white rounded-full font-medium hover:bg-gray-800 transition shadow-sm">
-              AI Chat
+    <div className="min-h-screen bg-[#090d16] text-slate-100 flex flex-col justify-between">
+      {/* Header */}
+      <header className="border-b border-slate-800 bg-[#090d16]/80 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+              <Compass size={18} className="text-white" />
+            </div>
+            <Link href="/" className="font-semibold text-lg tracking-tight hover:opacity-90">
+              Code<span className="text-cyan-400">Atlas</span>
             </Link>
           </div>
-        </header>
+          <Link href="/projects" className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-200 transition">
+            <ArrowLeft size={16} /> All Projects
+          </Link>
+        </div>
+      </header>
 
-        <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200">
-          <h2 className="text-xl font-medium mb-6">Ingest Repository</h2>
-          {error && <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-xl text-sm">{error}</div>}
+      {/* Main Container */}
+      <main className="flex-1 max-w-5xl mx-auto px-6 py-10 w-full space-y-8">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-white">{project.name}</h1>
+            <p className="text-sm text-slate-400 mt-1">{project.description || 'No description provided.'}</p>
+          </div>
+          <div className="flex gap-3">
+            <Link 
+              href={`/projects/${params.id}/architecture`} 
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 text-white rounded-xl text-sm font-medium transition shadow-lg shadow-cyan-500/20"
+            >
+              <Layers size={16} /> Architecture Map
+            </Link>
+          </div>
+        </div>
+
+        {error && (
+          <div className="flex items-center gap-2 p-4 bg-red-950/40 border border-red-800/60 rounded-xl text-red-400 text-sm">
+            <AlertCircle size={18} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {/* Ingestion Cards */}
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-8 backdrop-blur-md">
+          <h2 className="text-xl font-bold text-white mb-2">Ingest Codebase</h2>
+          <p className="text-sm text-slate-400 mb-8">Import your source code via GitHub clone or ZIP upload to run polyglot AST analysis and graph generation.</p>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <form onSubmit={handleGithubImport} className="space-y-4">
-              <h3 className="font-medium text-gray-700">Import from GitHub</h3>
-              <input 
-                type="text" 
-                value={githubUrl}
-                onChange={(e) => setGithubUrl(e.target.value)}
-                placeholder="https://github.com/user/repo"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                required 
-                disabled={loading}
-              />
-              <button disabled={loading} className="w-full py-3 bg-yellow-400 text-gray-900 font-medium rounded-xl hover:bg-yellow-500 transition disabled:opacity-50">
-                {loading ? 'Processing...' : 'Import & Analyze'}
+            {/* GitHub Ingestion */}
+            <form onSubmit={handleGithubImport} className="space-y-4 flex flex-col justify-between p-6 rounded-xl bg-slate-950/60 border border-slate-800/80">
+              <div>
+                <div className="flex items-center gap-2 text-slate-200 font-semibold mb-2">
+                  <GitBranch size={18} className="text-cyan-400" /> Import from GitHub
+                </div>
+                <p className="text-xs text-slate-400 mb-4">Shallow clones the repository securely to generate call trees and identify architectural smells.</p>
+                <input 
+                  type="text" 
+                  value={githubUrl}
+                  onChange={(e) => setGithubUrl(e.target.value)}
+                  placeholder="https://github.com/username/repository"
+                  className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 text-sm"
+                  required 
+                  disabled={loading}
+                />
+              </div>
+              <button 
+                type="submit"
+                disabled={loading} 
+                className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-medium text-sm rounded-xl transition disabled:opacity-50 mt-2"
+              >
+                {loading ? 'Cloning & Analyzing...' : 'Import & Run Analysis'}
               </button>
             </form>
 
-            <div className="space-y-4">
-              <h3 className="font-medium text-gray-700">Upload ZIP Archive</h3>
-              
-              {uploadedFile ? (
-                <div className="border-2 border-green-300 bg-green-50 rounded-xl p-8 text-center flex flex-col items-center justify-center">
-                  <span className="text-3xl mb-2">✅</span>
-                  <p className="font-medium text-green-800">File Uploaded</p>
-                  <p className="text-sm text-green-600 mt-1">{uploadedFile}</p>
-                  <button 
-                    onClick={() => setUploadedFile(null)}
-                    className="mt-4 text-sm text-green-700 underline hover:text-green-900"
+            {/* ZIP Upload Ingestion */}
+            <div className="space-y-4 flex flex-col justify-between p-6 rounded-xl bg-slate-950/60 border border-slate-800/80">
+              <div>
+                <div className="flex items-center gap-2 text-slate-200 font-semibold mb-2">
+                  <Upload size={18} className="text-indigo-400" /> Upload ZIP Archive
+                </div>
+                <p className="text-xs text-slate-400 mb-4">Upload a compressed project folder directly. Sanitized with path-traversal guards.</p>
+                
+                {uploadedFile ? (
+                  <div className="p-4 rounded-xl bg-emerald-950/30 border border-emerald-800/50 text-center">
+                    <CheckCircle2 size={24} className="text-emerald-400 mx-auto mb-1" />
+                    <p className="text-xs font-semibold text-emerald-300">Uploaded Successfully</p>
+                    <p className="text-[11px] text-emerald-400/80 truncate mt-0.5">{uploadedFile}</p>
+                  </div>
+                ) : (
+                  <div 
+                    className={`border-2 border-dashed rounded-xl p-6 text-center transition cursor-pointer flex flex-col items-center justify-center ${
+                      isDragging ? 'border-cyan-400 bg-cyan-950/20' : 'border-slate-800 hover:border-slate-700 hover:bg-slate-900/50'
+                    }`}
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
                   >
-                    Upload another file
-                  </button>
-                </div>
-              ) : (
-                <div 
-                  className={`border-2 border-dashed rounded-xl p-8 text-center transition cursor-pointer flex flex-col items-center justify-center relative overflow-hidden ${
-                    isDragging ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300 text-gray-500 hover:bg-gray-50 hover:border-gray-400'
-                  }`}
-                  onClick={() => fileInputRef.current?.click()}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                >
-                  <span className="text-3xl mb-2">{isDragging ? '📥' : '📁'}</span>
-                  <p className="font-medium text-gray-700">
-                    {loading ? 'Uploading...' : isDragging ? 'Drop ZIP file here' : 'Click or Drag & Drop ZIP'}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">Extracts and analyzes code automatically</p>
-                  
-                  <input 
-                    type="file" 
-                    accept=".zip" 
-                    ref={fileInputRef}
-                    onChange={handleZipUpload}
-                    className="hidden"
-                    disabled={loading}
-                  />
-                </div>
-              )}
+                    <Upload size={24} className="text-slate-500 mb-2" />
+                    <p className="text-xs font-medium text-slate-300">
+                      {loading ? 'Extracting & Parsing...' : isDragging ? 'Drop ZIP archive here' : 'Click to select or drag & drop ZIP'}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1">Maximum 50MB</p>
+                    
+                    <input 
+                      type="file" 
+                      accept=".zip" 
+                      ref={fileInputRef}
+                      onChange={handleZipUpload}
+                      className="hidden"
+                      disabled={loading}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </main>
+
+      <footer className="border-t border-slate-800/60 py-6 text-center text-xs text-slate-500">
+        CodeAtlas Architecture Platform
+      </footer>
     </div>
   );
 }

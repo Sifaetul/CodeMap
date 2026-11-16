@@ -24,7 +24,9 @@
 - [x] 3.5 Conversation history endpoints (`GET/DELETE /chat/messages`) & frontend auto-restore on mount
 - [x] 3.6 Verification & Cross-check: 23/23 Unit/Integration tests passing (100% Pass Rate)
 
-## Phase 4: UI/UX & Frontend Polish [PENDING USER REVIEW]
-- [ ] 4.1 Unify design system & theme across dashboard and graph
-- [ ] 4.2 React Flow performance optimization (LOD, style cleanup)
-- [ ] 4.3 Rich code viewer with syntax highlighting in node details panel
+## Phase 4: UI/UX & Frontend Polish [COMPLETED]
+- [x] 4.1 Unified Modern Dark Slate Design System across landing, auth (login, register), projects dashboard, new project, repository ingestion, and architecture visualizer
+- [x] 4.2 React Flow 60fps Optimization: Memoized node rendering, PageRank badges ("Core"), Instability badges ("Unstable"), smooth Bezier curves, and type-based filtering (All, Module, Class, Function, File)
+- [x] 4.3 Interactive Layout Controls: Directional Dagre layout toggle (Top-to-Bottom `TB` vs Left-to-Right `LR`) and fit view shortcuts
+- [x] 4.4 Architecture Findings & Code Viewer Panel: Tabbed inspector with Node Details (AST code snippet, metrics, dependencies) and "Smells & Findings" tab displaying real-time circular dependencies, dead code, and god components
+- [x] 4.5 Verification & Cross-check: Next.js production build (`npm run build`) 100% clean (9/9 routes compiled), all 23 backend & analyzer pytest suites passing in Docker
