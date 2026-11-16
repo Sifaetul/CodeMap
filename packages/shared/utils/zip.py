@@ -10,7 +10,10 @@ MAX_EXTRACTED_SIZE = 200 * 1024 * 1024 # 200 MB
 def is_safe_path(target_path: str, base_dir: str) -> bool:
     abs_target = os.path.abspath(target_path)
     abs_base = os.path.abspath(base_dir)
-    return abs_target.startswith(abs_base)
+    try:
+        return os.path.commonpath([abs_base, abs_target]) == abs_base
+    except ValueError:
+        return False
 
 def extract_zip(file_path: str, target_dir: str):
     if os.path.getsize(file_path) > MAX_ZIP_SIZE:

@@ -32,13 +32,16 @@ const CustomNode = ({ data, selected }: any) => {
 
   const isHighCore = data.pagerank !== undefined && data.pagerank >= 0.6;
   const isUnstable = data.instability !== undefined && data.instability >= 0.7;
+  const isSearchMatch = Boolean(data.isSearchMatch);
 
   return (
     <div 
       className={`relative px-4 py-3 rounded-2xl bg-slate-900/90 border transition-all duration-200 backdrop-blur-md min-w-[210px] ${
         selected 
           ? 'border-cyan-400 ring-2 ring-cyan-400/30 shadow-lg shadow-cyan-500/20' 
-          : 'border-slate-800 hover:border-slate-700 hover:bg-slate-900'
+          : (isSearchMatch 
+              ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-lg shadow-amber-500/20' 
+              : 'border-slate-800 hover:border-slate-700 hover:bg-slate-900')
       }`}
       style={{ willChange: 'transform' }}
     >

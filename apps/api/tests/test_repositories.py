@@ -17,3 +17,18 @@ def test_github_import_invalid_url(client):
     )
     assert res.status_code == 400
     assert "Invalid GitHub URL" in res.json()["detail"]
+
+def test_is_safe_path_security_checks():
+    from packages.shared.utils.zip import is_safe_path
+    base = "/tmp/codeatlas_workspaces/snap-123"
+    
+    # Valid subpaths
+    assert is_safe_path("/tmp/codeatlas_workspaces/snap-123/src/index.js", base) is True
+    assert is_safe_path("/tmp/codeatlas_workspaces/snap-123/file.txt", base) is True
+
+    # Path traversal with parent directory
+    assert is_safe_path("/tmp/codeatlas_workspaces/snap-123/../../etc/passwd", base) is False
+    assert is_safe_path("/tmp/codeatlas_workspaces/snap-123/../snap-124/evil.py", base) is False
+
+    # Prefix confusion attack (snap-123_evil starting with snap-123)
+    assert is_safe_path("/tmp/codeatlas_workspaces/snap-123_evil/file.py", base) is False

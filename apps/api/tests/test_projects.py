@@ -38,3 +38,36 @@ def test_isolation(client):
         headers={"Authorization": f"Bearer {token2}"}
     )
     assert res_get.status_code == 404
+
+def test_delete_project_cleans_workspace(client, db):
+    import os
+    from uuid import uuid4
+    from packages.shared.models import Repository, RepositorySnapshot
+    from packages.shared.utils.workspace import get_workspace_dir
+
+    token = get_auth_token(client)
+    res = client.post("/api/projects", headers={"Authorization": f"Bearer {token}"}, json={"name": "To Delete"})
+    project_id = res.json()["id"]
+
+    # Seed repository and snapshot with proper UUID objects
+    from uuid import UUID as PyUUID
+    repo = Repository(project_id=PyUUID(project_id), url="test.zip", source_type="zip")
+    db.add(repo)
+    db.commit()
+
+    snap = RepositorySnapshot(repository_id=repo.id)
+    db.add(snap)
+    db.commit()
+
+    ws_dir = get_workspace_dir(str(snap.id))
+    dummy_file = os.path.join(ws_dir, "test.txt")
+    with open(dummy_file, "w") as f:
+        f.write("hello")
+    assert os.path.exists(dummy_file)
+
+    # Delete project via API
+    del_res = client.delete(f"/api/projects/{project_id}", headers={"Authorization": f"Bearer {token}"})
+    assert del_res.status_code == 204
+
+    # Verify workspace directory is wiped from disk
+    assert not os.path.exists(ws_dir)

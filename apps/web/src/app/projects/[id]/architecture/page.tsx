@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Activity, Code, GitMerge, FileText, ArrowLeft, Terminal, Cpu,
   Send, Sparkles, X, Copy, Check, ShieldAlert,
-  SlidersHorizontal, RefreshCw, Layers, ShieldCheck, AlertTriangle
+  SlidersHorizontal, RefreshCw, Layers, ShieldCheck, AlertTriangle, Search
 } from 'lucide-react';
 import CustomNode from '@/components/CustomNode';
 
@@ -57,6 +57,7 @@ export default function ArchitecturePage({ params }: { params: { id: string } })
   const [copiedCode, setCopiedCode] = useState(false);
   const [layoutDirection, setLayoutDirection] = useState<'TB' | 'LR'>('TB');
   const [filterType, setFilterType] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   
   // Chat state
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -117,21 +118,74 @@ export default function ArchitecturePage({ params }: { params: { id: string } })
     setChatMessages(prev => [...prev, { role: 'user', text: newMsg }]);
     setIsTyping(true);
     
+    // Add empty placeholder for assistant response to stream into
+    setChatMessages(prev => [...prev, { role: 'ai', text: '' }]);
+    
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/projects/${params.id}/chat`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/projects/${params.id}/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ message: newMsg, context_entity_id: selectedNodeId })
       });
-      if (res.ok) {
-        const data = await res.json();
-        setChatMessages(prev => [...prev, { role: 'ai', text: data.reply }]);
-      } else {
-        setChatMessages(prev => [...prev, { role: 'ai', text: 'Sorry, unable to contact architecture AI backend.' }]);
+
+      if (!res.ok || !res.body) {
+        // Fallback to standard chat endpoint if SSE stream not available
+        const fallbackRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/projects/${params.id}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ message: newMsg, context_entity_id: selectedNodeId })
+        });
+        if (fallbackRes.ok) {
+          const data = await fallbackRes.json();
+          setChatMessages(prev => {
+            const next = [...prev];
+            next[next.length - 1] = { role: 'ai', text: data.reply };
+            return next;
+          });
+        }
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const parsed = JSON.parse(line.slice(6));
+              if (parsed.token) {
+                setChatMessages(prev => {
+                  const next = [...prev];
+                  const lastIdx = next.length - 1;
+                  next[lastIdx] = {
+                    ...next[lastIdx],
+                    text: next[lastIdx].text + parsed.token
+                  };
+                  return next;
+                });
+              }
+            } catch (e) {
+              // Ignore non-json lines
+            }
+          }
+        }
       }
     } catch(e) {
-      setChatMessages(prev => [...prev, { role: 'ai', text: 'Network connection error while contacting AI core.' }]);
+      setChatMessages(prev => {
+        const next = [...prev];
+        next[next.length - 1] = { role: 'ai', text: 'Network connection error while contacting AI core.' };
+        return next;
+      });
     } finally {
       setIsTyping(false);
     }
@@ -139,7 +193,7 @@ export default function ArchitecturePage({ params }: { params: { id: string } })
 
   const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
 
-  const applyFilterAndLayout = useCallback((rawN: any[], rawE: any[], dir: 'TB' | 'LR', filter: string) => {
+  const applyFilterAndLayout = useCallback((rawN: any[], rawE: any[], dir: 'TB' | 'LR', filter: string, search: string = '') => {
     let filteredNodes = rawN;
     if (filter !== 'all') {
       filteredNodes = rawN.filter(n => {
@@ -148,10 +202,26 @@ export default function ArchitecturePage({ params }: { params: { id: string } })
       });
     }
 
-    const visibleNodeIds = new Set(filteredNodes.map(n => n.id));
+    const trimmedSearch = search.trim().toLowerCase();
+    const styledNodes = filteredNodes.map(n => {
+      const isMatch = trimmedSearch ? (
+        (n.data?.name || '').toLowerCase().includes(trimmedSearch) ||
+        (n.data?.type || '').toLowerCase().includes(trimmedSearch)
+      ) : false;
+
+      return {
+        ...n,
+        data: {
+          ...n.data,
+          isSearchMatch: isMatch
+        }
+      };
+    });
+
+    const visibleNodeIds = new Set(styledNodes.map(n => n.id));
     const filteredEdges = rawE.filter(e => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target));
 
-    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(filteredNodes, filteredEdges, dir);
+    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(styledNodes, filteredEdges, dir);
     setNodes(layoutedNodes);
     setEdges(layoutedEdges);
   }, [setNodes, setEdges]);
@@ -232,13 +302,13 @@ export default function ArchitecturePage({ params }: { params: { id: string } })
 
   const handleFilterChange = (newFilter: string) => {
     setFilterType(newFilter);
-    applyFilterAndLayout(rawNodes, rawEdges, layoutDirection, newFilter);
+    applyFilterAndLayout(rawNodes, rawEdges, layoutDirection, newFilter, searchQuery);
   };
 
   const handleDirectionToggle = () => {
     const nextDir = layoutDirection === 'TB' ? 'LR' : 'TB';
     setLayoutDirection(nextDir);
-    applyFilterAndLayout(rawNodes, rawEdges, nextDir, filterType);
+    applyFilterAndLayout(rawNodes, rawEdges, nextDir, filterType, searchQuery);
   };
 
   const onNodeClick = useCallback(async (event: any, node: any) => {
@@ -307,6 +377,30 @@ export default function ArchitecturePage({ params }: { params: { id: string } })
 
         {/* Toolbar Controls */}
         <div className="flex items-center gap-2">
+          {/* Node Search Bar */}
+          <div className="relative flex items-center">
+            <Search size={13} className="absolute left-2.5 text-slate-500 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSearchQuery(val);
+                applyFilterAndLayout(rawNodes, rawEdges, layoutDirection, filterType, val);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && searchQuery.trim()) {
+                  const match = rawNodes.find(n => (n.data?.name || '').toLowerCase().includes(searchQuery.toLowerCase()));
+                  if (match) {
+                    onNodeClick(null, match);
+                  }
+                }
+              }}
+              placeholder="Search nodes (e.g. auth, User)..."
+              className="bg-slate-900 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/60 w-44 transition-all focus:w-60"
+            />
+          </div>
+
           {/* Filter Pills */}
           <div className="flex items-center p-1 bg-slate-900/90 rounded-xl border border-slate-800 text-xs">
             {['all', 'module', 'class', 'function', 'file'].map(f => (
@@ -511,6 +605,21 @@ export default function ArchitecturePage({ params }: { params: { id: string } })
                             </ul>
                           </div>
                         </div>
+
+                        {/* Ripple Effect / Blast Radius */}
+                        {entityDetails.callers && entityDetails.callers.length > 0 && (
+                          <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-800/40 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <AlertTriangle size={15} className="text-amber-400" />
+                              <span className="text-xs font-bold text-amber-300">
+                                Ripple Effect (Blast Radius)
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-300 leading-relaxed">
+                              Refactoring or altering <span className="text-cyan-300 font-mono font-medium">{entityDetails.name}</span> will directly impact <span className="text-amber-300 font-bold">{entityDetails.callers.length} dependent component{entityDetails.callers.length > 1 ? 's' : ''}</span> in this codebase.
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
 

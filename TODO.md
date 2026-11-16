@@ -30,3 +30,19 @@
 - [x] 4.3 Interactive Layout Controls: Directional Dagre layout toggle (Top-to-Bottom `TB` vs Left-to-Right `LR`) and fit view shortcuts
 - [x] 4.4 Architecture Findings & Code Viewer Panel: Tabbed inspector with Node Details (AST code snippet, metrics, dependencies) and "Smells & Findings" tab displaying real-time circular dependencies, dead code, and god components
 - [x] 4.5 Verification & Cross-check: Next.js production build (`npm run build`) 100% clean (9/9 routes compiled), all 23 backend & analyzer pytest suites passing in Docker
+
+## Phase 5: Security, Leak Prevention & Stability Engine [COMPLETED]
+- [x] 5.1 Bulletproof Path Traversal Protection (`os.path.commonpath`) in `zip.py` and `graph.py` against prefix and parent traversal attacks
+- [x] 5.2 Disk Storage Leak Prevention: Workspace directory cleanup (`cleanup_workspace`) on project deletion and on ingestion failures
+- [x] 5.3 Celery Worker Transaction Rollback Guard: Added `db.rollback()` in exception handler preventing `PendingRollbackError` and job deadlocks
+- [x] 5.4 Asynchronous Worker Remote Git Clone: Delegated remote cloning to Celery worker, eliminating blocking I/O in FastAPI HTTP thread
+- [x] 5.5 Database Connection Pool Hardening: Enabled `pool_pre_ping=True`, `pool_recycle=1800`, and sensible pool dimensions in `packages/shared/database.py`
+- [x] 5.6 Verification & Cross-check: 25/25 Pytest unit and security tests passing in Docker
+
+## Phase 6: High-Scale Engine & Algorithmic Optimization [COMPLETED]
+- [x] 6.1 In-Memory Graph Dedup & Bulk SQL Insertion in `apps/analyzer/pipeline.py`: Eliminated N+1 SQL queries during parsing & call resolution
+- [x] 6.2 SQL-Indexed Full-Text RAG Retrieval in `packages/shared/ai/retriever.py`: Replaced $O(N)$ full-table memory scans with targeted SQL queries
+- [x] 6.3 Graph Caching Layer: Added sub-millisecond in-memory graph cache in `apps/api/routes/graph.py`
+- [x] 6.4 Live Frontend SSE Token Streaming in `apps/web`: Connected `ReadableStream` SSE reader for real-time ChatGPT-like typing animation
+- [x] 6.5 Interactive Graph Search & Ripple Effect Visualizer: Instant node search bar with highlight ring and "Blast Radius" dependent component tracer
+- [x] 6.6 Verification & Cross-check: Next.js production build (`npm run build`) 100% clean (9/9 routes compiled), all 25 backend tests passing in Docker

@@ -103,22 +103,23 @@ def retrieve_architecture_context(
             except Exception:
                 pass
 
-    # 3. Retrieve relevant entities based on search tokens
+    # 3. Retrieve relevant entities using targeted SQL search
+    from sqlalchemy import or_
     tokens = [t.lower() for t in query.replace("?", " ").replace(",", " ").split() if len(t) > 2]
-    all_entities = db.query(CodeEntity).filter(CodeEntity.snapshot_id == snapshot_id).all()
-    
-    scored_entities = []
-    for e in all_entities:
-        e_name_lower = e.name.lower()
-        score = sum(2 if token in e_name_lower else (1 if token in e.type.lower() else 0) for token in tokens)
-        if score > 0:
-            scored_entities.append((score, e))
-            
-    scored_entities.sort(key=lambda x: x[0], reverse=True)
-    context["related_entities"] = [
-        {"id": str(e.id), "name": e.name, "type": e.type}
-        for _, e in scored_entities[:6]
-    ]
+    context["related_entities"] = []
+
+    if tokens:
+        search_clauses = [CodeEntity.name.ilike(f"%{tok}%") for tok in tokens[:8]]
+        matched_entities = (
+            db.query(CodeEntity)
+            .filter(CodeEntity.snapshot_id == snapshot_id, or_(*search_clauses))
+            .limit(10)
+            .all()
+        )
+        context["related_entities"] = [
+            {"id": str(e.id), "name": e.name, "type": e.type}
+            for e in matched_entities[:6]
+        ]
 
     # 4. Relevant architectural findings
     findings = db.query(AnalysisFinding).filter(AnalysisFinding.snapshot_id == snapshot_id).all()

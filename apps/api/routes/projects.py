@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 from typing import List
 from uuid import UUID
 
-from packages.shared.models import Project, User
+from packages.shared.models import Project, User, Repository, RepositorySnapshot
+from packages.shared.utils.workspace import cleanup_workspace
 from apps.api.schemas.project import ProjectCreate, ProjectResponse, ProjectUpdate
 from apps.api.core.deps import get_db, get_current_user
 
@@ -55,6 +56,16 @@ def delete_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
+    # Clean up physical workspace directories on disk for all snapshots
+    snapshots = (
+        db.query(RepositorySnapshot)
+        .join(Repository)
+        .filter(Repository.project_id == project.id)
+        .all()
+    )
+    for s in snapshots:
+        cleanup_workspace(str(s.id))
+
     db.delete(project)
     db.commit()
     return None

@@ -8,7 +8,7 @@ from celery import Celery
 from packages.shared.models import Project, User, Repository, RepositorySnapshot, AnalysisJob
 from apps.api.schemas.repository import GithubImportRequest, RepositoryResponse
 from apps.api.core.deps import get_db, get_current_user
-from packages.shared.utils.workspace import get_workspace_dir
+from packages.shared.utils.workspace import get_workspace_dir, cleanup_workspace
 from packages.shared.utils.git import clone_repository, GitError, validate_github_url
 from packages.shared.utils.zip import extract_zip, ZipExtractionError
 
@@ -49,12 +49,6 @@ def import_github_repository(
     db.refresh(snapshot)
 
     workspace_dir = get_workspace_dir(str(snapshot.id))
-    try:
-        clone_repository(request.url, workspace_dir)
-    except GitError as e:
-        db.delete(snapshot)
-        db.commit()
-        raise HTTPException(status_code=400, detail=str(e))
 
     # Trigger Analysis Job automatically in background
     job = AnalysisJob(snapshot_id=snapshot.id, status="PENDING")
@@ -62,10 +56,11 @@ def import_github_repository(
     db.commit()
     db.refresh(job)
 
-    # Dispatch to Celery asynchronously without blocking HTTP thread
+    # Dispatch to Celery asynchronously without blocking HTTP thread (remote clone happens in worker)
     celery_client.send_task(
         "apps.worker.main.analyze_repository_task",
-        args=[str(job.id), str(snapshot.id), workspace_dir]
+        args=[str(job.id), str(snapshot.id), workspace_dir],
+        kwargs={"clone_url": request.url}
     )
 
     return repo
@@ -79,10 +74,11 @@ def upload_zip_repository(
 ):
     project = verify_project_access(project_id, db, current_user)
     
-    if not file.filename.endswith('.zip'):
+    safe_filename = os.path.basename(file.filename)
+    if not safe_filename.endswith('.zip'):
         raise HTTPException(status_code=400, detail="Only ZIP files are supported")
 
-    repo = Repository(project_id=project.id, url=file.filename, source_type="zip")
+    repo = Repository(project_id=project.id, url=safe_filename, source_type="zip")
     db.add(repo)
     db.commit()
     db.refresh(repo)
@@ -99,8 +95,10 @@ def upload_zip_repository(
         with open(temp_zip_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         extract_zip(temp_zip_path, workspace_dir)
-        os.remove(temp_zip_path)
+        if os.path.exists(temp_zip_path):
+            os.remove(temp_zip_path)
     except Exception as e:
+        cleanup_workspace(str(snapshot.id))
         db.delete(snapshot)
         db.commit()
         raise HTTPException(status_code=400, detail=f"Failed to process ZIP: {str(e)}")

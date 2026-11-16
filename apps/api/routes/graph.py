@@ -7,6 +7,7 @@ from packages.shared.models import Project, User, Repository, RepositorySnapshot
 from apps.api.core.deps import get_db, get_current_user
 
 router = APIRouter()
+_GRAPH_CACHE: Dict[str, Dict[str, Any]] = {}
 
 @router.get("/{project_id}/graph")
 def get_project_graph(
@@ -18,11 +19,14 @@ def get_project_graph(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-
     # Get the latest snapshot
     snapshot = db.query(RepositorySnapshot).join(Repository).filter(Repository.project_id == project.id).order_by(RepositorySnapshot.created_at.desc()).first()
     if not snapshot:
         return {"nodes": [], "edges": []}
+
+    cache_key = f"{snapshot.id}_{snapshot.created_at.isoformat() if snapshot.created_at else ''}"
+    if cache_key in _GRAPH_CACHE:
+        return _GRAPH_CACHE[cache_key]
 
     files = db.query(File).filter(File.snapshot_id == snapshot.id).all()
     entities = db.query(CodeEntity).filter(CodeEntity.snapshot_id == snapshot.id).all()
@@ -148,7 +152,12 @@ def get_project_graph(
                 "label": dep.type
             })
 
-    return {"nodes": nodes, "edges": edges}
+    result = {"nodes": nodes, "edges": edges}
+    if len(_GRAPH_CACHE) > 50:
+        _GRAPH_CACHE.pop(next(iter(_GRAPH_CACHE)))
+    _GRAPH_CACHE[cache_key] = result
+
+    return result
 
 
 import os
@@ -158,7 +167,10 @@ from packages.shared.utils.workspace import get_workspace_dir
 def _is_safe_path(target_path: str, base_dir: str) -> bool:
     abs_target = os.path.abspath(target_path)
     abs_base = os.path.abspath(base_dir)
-    return abs_target.startswith(abs_base)
+    try:
+        return os.path.commonpath([abs_base, abs_target]) == abs_base
+    except ValueError:
+        return False
 
 @router.get("/{project_id}/entities/{entity_id}")
 def get_entity_details(

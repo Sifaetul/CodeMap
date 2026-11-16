@@ -140,7 +140,9 @@ def run_analysis_pipeline(db: Session, snapshot_id: str, workspace_dir: str, job
         for name, entity_id in file_result["entity_id_map"].items():
             entities_by_name[name].append((file_result["rel_path"], entity_id))
             
-    # 2. Persist Module Dependencies from Imports
+    # 2. Persist Module Dependencies from Imports (In-Memory Dedup & Batch Insert)
+    seen_dependencies = set()
+    dependencies_to_add = []
     for file_result in parsed_results:
         src_module_id = file_result["module_id"]
         
@@ -160,22 +162,23 @@ def run_analysis_pipeline(db: Session, snapshot_id: str, workspace_dir: str, job
                         break
 
             if matched_target_id and matched_target_id != src_module_id:
-                existing_dep = db.query(Dependency).filter_by(
-                    snapshot_id=parsed_snapshot_uuid,
-                    source_id=src_module_id,
-                    target_id=matched_target_id,
-                    type="IMPORTS"
-                ).first()
-                if not existing_dep:
-                    db.add(Dependency(
+                dep_key = (src_module_id, matched_target_id, "IMPORTS")
+                if dep_key not in seen_dependencies:
+                    seen_dependencies.add(dep_key)
+                    dependencies_to_add.append(Dependency(
                         snapshot_id=parsed_snapshot_uuid,
                         source_id=src_module_id,
                         target_id=matched_target_id,
                         type="IMPORTS",
                         line_number=imp.get("line")
                     ))
+    if dependencies_to_add:
+        db.add_all(dependencies_to_add)
+        db.flush()
 
-    # 3. Add Call Relationships with collision-free resolution
+    # 3. Add Call Relationships with collision-free resolution (In-Memory Dedup & Batch Insert)
+    seen_calls = set()
+    calls_to_add = []
     for file_result in parsed_results:
         local_entity_map = file_result["entity_id_map"]
         imported_names = {imp["name"].split(".")[-1]: imp["name"] for imp in file_result["imports"]}
@@ -207,13 +210,10 @@ def run_analysis_pipeline(db: Session, snapshot_id: str, workspace_dir: str, job
                 target_id = entities_by_name[callee_name][0][1]
 
             if target_id:
-                existing = db.query(CallRelationship).filter_by(
-                    snapshot_id=parsed_snapshot_uuid,
-                    caller_id=caller_id,
-                    callee_id=target_id
-                ).first()
-                if not existing:
-                    db.add(CallRelationship(
+                call_key = (caller_id, target_id)
+                if call_key not in seen_calls:
+                    seen_calls.add(call_key)
+                    calls_to_add.append(CallRelationship(
                         snapshot_id=parsed_snapshot_uuid,
                         caller_id=caller_id,
                         callee_id=target_id,
@@ -221,7 +221,7 @@ def run_analysis_pipeline(db: Session, snapshot_id: str, workspace_dir: str, job
                         line_number=call.get("line")
                     ))
             else:
-                db.add(CallRelationship(
+                calls_to_add.append(CallRelationship(
                     snapshot_id=parsed_snapshot_uuid,
                     caller_id=caller_id,
                     callee_id=None,
@@ -229,6 +229,10 @@ def run_analysis_pipeline(db: Session, snapshot_id: str, workspace_dir: str, job
                     resolution_status="UNRESOLVED",
                     line_number=call.get("line")
                 ))
+
+    if calls_to_add:
+        db.add_all(calls_to_add)
+        db.flush()
 
     # 4. Deep Graph Algorithms & Architecture Smells
     call_edges = [
