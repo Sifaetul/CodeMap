@@ -1,43 +1,6 @@
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
-from apps.api.main import app, limiter
-from apps.api.core.deps import get_db
-from packages.shared.database import Base
-from packages.shared.models import User
-
-limiter.enabled = False
-
-# In-memory SQLite for testing
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-Base.metadata.create_all(bind=engine)
-
-def override_get_db():
-    try:
-        db = TestingSessionLocal()
-        yield db
-    finally:
-        db.close()
-
-app.dependency_overrides[get_db] = override_get_db
-
-client = TestClient(app)
-
-@pytest.fixture(autouse=True)
-def cleanup_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-
-def test_register_user():
+def test_register_user(client):
     response = client.post(
         "/api/auth/register",
         json={"email": "test@example.com", "password": "password123"}
@@ -47,7 +10,7 @@ def test_register_user():
     assert data["email"] == "test@example.com"
     assert "id" in data
 
-def test_login_user():
+def test_login_user(client):
     client.post(
         "/api/auth/register",
         json={"email": "test@example.com", "password": "password123"}
@@ -61,7 +24,7 @@ def test_login_user():
     assert "access_token" in data
     assert data["token_type"] == "bearer"
 
-def test_read_users_me():
+def test_read_users_me(client):
     client.post(
         "/api/auth/register",
         json={"email": "test@example.com", "password": "password123"}

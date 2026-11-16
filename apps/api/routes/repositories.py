@@ -56,21 +56,17 @@ def import_github_repository(
         db.commit()
         raise HTTPException(status_code=400, detail=str(e))
 
-    # Trigger Analysis Job automatically
+    # Trigger Analysis Job automatically in background
     job = AnalysisJob(snapshot_id=snapshot.id, status="PENDING")
     db.add(job)
     db.commit()
     db.refresh(job)
 
-    # Use send_task to avoid importing worker code
-    task = celery_client.send_task(
+    # Dispatch to Celery asynchronously without blocking HTTP thread
+    celery_client.send_task(
         "apps.worker.main.analyze_repository_task",
         args=[str(job.id), str(snapshot.id), workspace_dir]
     )
-    try:
-        task.get(timeout=30)
-    except Exception as e:
-        pass
 
     return repo
 
@@ -109,19 +105,16 @@ def upload_zip_repository(
         db.commit()
         raise HTTPException(status_code=400, detail=f"Failed to process ZIP: {str(e)}")
 
-    # Trigger Analysis Job automatically
+    # Trigger Analysis Job automatically in background
     job = AnalysisJob(snapshot_id=snapshot.id, status="PENDING")
     db.add(job)
     db.commit()
     db.refresh(job)
 
-    task = celery_client.send_task(
+    # Dispatch to Celery asynchronously without blocking HTTP thread
+    celery_client.send_task(
         "apps.worker.main.analyze_repository_task",
         args=[str(job.id), str(snapshot.id), workspace_dir]
     )
-    try:
-        task.get(timeout=30)
-    except Exception as e:
-        pass
 
     return repo

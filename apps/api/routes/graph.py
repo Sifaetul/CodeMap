@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 from typing import List, Dict, Any
 
-from packages.shared.models import Project, User, Repository, RepositorySnapshot, CodeEntity, CallRelationship
+from packages.shared.models import Project, User, Repository, RepositorySnapshot, CodeEntity, CallRelationship, Dependency
 from apps.api.core.deps import get_db, get_current_user
 
 router = APIRouter()
@@ -27,6 +27,7 @@ def get_project_graph(
     files = db.query(File).filter(File.snapshot_id == snapshot.id).all()
     entities = db.query(CodeEntity).filter(CodeEntity.snapshot_id == snapshot.id).all()
     calls = db.query(CallRelationship).filter(CallRelationship.snapshot_id == snapshot.id).all()
+    dependencies = db.query(Dependency).filter(Dependency.snapshot_id == snapshot.id).all()
 
     nodes = []
     edges = []
@@ -92,15 +93,29 @@ def get_project_graph(
             }
         })
 
-    # 2. Entity Nodes
+    # 2. Entity Nodes with Centrality & Coupling Metrics
+    from apps.analyzer.algorithms import compute_pagerank, compute_coupling_metrics
+    call_edges = [(str(c.caller_id), str(c.callee_id)) for c in calls if c.caller_id and c.callee_id]
+    entity_id_strs = [str(ent.id) for ent in entities]
+    pageranks = compute_pagerank(entity_id_strs, call_edges)
+    couplings = compute_coupling_metrics(entity_id_strs, call_edges)
+
     for ent in entities:
+        node_id_str = str(ent.id)
+        node_pr = pageranks.get(node_id_str, 0.0)
+        node_coupling = couplings.get(node_id_str, {"ca": 0, "ce": 0, "instability": 0.0})
+
         nodes.append({
-            "id": str(ent.id),
+            "id": node_id_str,
             "type": "custom",
             "data": {
                 "label": f"{ent.type}: {ent.name}",
                 "name": ent.name,
-                "type": ent.type
+                "type": ent.type,
+                "pagerank": node_pr,
+                "ca": node_coupling["ca"],
+                "ce": node_coupling["ce"],
+                "instability": node_coupling["instability"]
             }
         })
         # Link entity to its file
@@ -122,6 +137,17 @@ def get_project_graph(
                 "type": "call"
             })
 
+    # 4. Dependency Edges (Module Imports)
+    for dep in dependencies:
+        if dep.source_id and dep.target_id:
+            edges.append({
+                "id": f"edge-dep-{dep.id}",
+                "source": str(dep.source_id),
+                "target": str(dep.target_id),
+                "type": "dependency",
+                "label": dep.type
+            })
+
     return {"nodes": nodes, "edges": edges}
 
 
@@ -129,10 +155,15 @@ import os
 from packages.shared.models.code_entity import File
 from packages.shared.utils.workspace import get_workspace_dir
 
+def _is_safe_path(target_path: str, base_dir: str) -> bool:
+    abs_target = os.path.abspath(target_path)
+    abs_base = os.path.abspath(base_dir)
+    return abs_target.startswith(abs_base)
+
 @router.get("/{project_id}/entities/{entity_id}")
 def get_entity_details(
     project_id: UUID,
-    entity_id: UUID,
+    entity_id: str,
     db: Session = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
@@ -140,7 +171,80 @@ def get_entity_details(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    ent = db.query(CodeEntity).filter(CodeEntity.id == entity_id).first()
+    # Get latest snapshot for project
+    snapshot = db.query(RepositorySnapshot).join(Repository).filter(Repository.project_id == project.id).order_by(RepositorySnapshot.created_at.desc()).first()
+
+    # 1. Handle Folder nodes
+    if entity_id.startswith("folder-"):
+        folder_path = entity_id[len("folder-"):]
+        folder_name = folder_path.split("/")[-1] if "/" in folder_path else folder_path
+        
+        contained_files = []
+        if snapshot:
+            files_in_folder = db.query(File).filter(
+                File.snapshot_id == snapshot.id,
+                File.path.startswith(folder_path + "/")
+            ).all()
+            contained_files = [f.path for f in files_in_folder]
+
+        return {
+            "id": entity_id,
+            "name": folder_name,
+            "type": "folder",
+            "file_path": folder_path,
+            "start_line": None,
+            "end_line": None,
+            "source_code": f"# Directory: {folder_path}\n# Contains {len(contained_files)} files:\n" + "\n".join(f"#  - {p}" for p in contained_files[:20]),
+            "callers": [],
+            "callees": []
+        }
+
+    # 2. Handle File nodes
+    if entity_id.startswith("file-"):
+        raw_id = entity_id[len("file-"):]
+        try:
+            file_uuid = UUID(raw_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid file UUID")
+
+        file_obj = db.query(File).filter(File.id == file_uuid).first()
+        if not file_obj:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        source_code = ""
+        workspace_dir = get_workspace_dir(str(file_obj.snapshot_id))
+        file_path = os.path.join(workspace_dir, file_obj.path)
+        if _is_safe_path(file_path, workspace_dir) and os.path.exists(file_path):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    source_code = f.read()
+            except Exception:
+                source_code = "# Unable to read file content"
+
+        file_name = file_obj.path.split("/")[-1]
+        
+        # Entities inside this file
+        file_entities = db.query(CodeEntity).filter(CodeEntity.file_id == file_obj.id).all()
+
+        return {
+            "id": entity_id,
+            "name": file_name,
+            "type": "file",
+            "file_path": file_obj.path,
+            "start_line": 1,
+            "end_line": len(source_code.splitlines()) if source_code else None,
+            "source_code": source_code,
+            "callers": [],
+            "callees": [{"id": str(e.id), "name": e.name, "type": e.type} for e in file_entities]
+        }
+
+    # 3. Handle Code Entity UUID
+    try:
+        parsed_entity_uuid = UUID(entity_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid entity UUID")
+
+    ent = db.query(CodeEntity).filter(CodeEntity.id == parsed_entity_uuid).first()
     if not ent:
         raise HTTPException(status_code=404, detail="Entity not found")
         
@@ -150,20 +254,23 @@ def get_entity_details(
     if file_obj:
         workspace_dir = get_workspace_dir(str(ent.snapshot_id))
         file_path = os.path.join(workspace_dir, file_obj.path)
-        if os.path.exists(file_path):
-            with open(file_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-                if ent.start_line and ent.end_line:
-                    source_code = "".join(lines[ent.start_line - 1 : ent.end_line])
-                else:
-                    source_code = "".join(lines)
+        if _is_safe_path(file_path, workspace_dir) and os.path.exists(file_path):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                    if ent.start_line and ent.end_line:
+                        source_code = "".join(lines[ent.start_line - 1 : ent.end_line])
+                    else:
+                        source_code = "".join(lines)
+            except Exception:
+                source_code = "# Unable to read source code snippet"
     
-    # Also find out who calls this, and who this calls
+    # Find callers and callees
     callers = db.query(CallRelationship).filter(CallRelationship.callee_id == ent.id).all()
     callees = db.query(CallRelationship).filter(CallRelationship.caller_id == ent.id).all()
     
-    caller_ids = [str(c.caller_id) for c in callers if c.caller_id]
-    callee_ids = [str(c.callee_id) for c in callees if c.callee_id]
+    caller_ids = [c.caller_id for c in callers if c.caller_id]
+    callee_ids = [c.callee_id for c in callees if c.callee_id]
     
     caller_entities = db.query(CodeEntity).filter(CodeEntity.id.in_(caller_ids)).all() if caller_ids else []
     callee_entities = db.query(CodeEntity).filter(CodeEntity.id.in_(callee_ids)).all() if callee_ids else []

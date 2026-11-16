@@ -1,10 +1,11 @@
 import React, { memo } from 'react';
 import { Handle, Position } from 'reactflow';
-import { Box, Code2, Folder, FileCode2 } from 'lucide-react';
+import { Box, Code2, Folder, FileCode2, Layers } from 'lucide-react';
 
 const CustomNode = ({ data, selected }: any) => {
   const isFolder = data.type === 'folder';
   const isFile = data.type === 'file';
+  const isModule = data.type === 'module';
   const isClass = data.type === 'class';
   
   let gradient = 'from-purple-600 to-pink-500';
@@ -19,6 +20,10 @@ const CustomNode = ({ data, selected }: any) => {
     gradient = 'from-emerald-600 to-teal-500';
     shadow = 'shadow-[0_0_15px_rgba(52,211,153,0.3)]';
     Icon = FileCode2;
+  } else if (isModule) {
+    gradient = 'from-indigo-600 to-blue-500';
+    shadow = 'shadow-[0_0_15px_rgba(99,102,241,0.3)]';
+    Icon = Layers;
   } else if (isClass) {
     gradient = 'from-blue-600 to-cyan-400';
     shadow = 'shadow-[0_0_15px_rgba(56,189,248,0.3)]';
@@ -49,7 +54,7 @@ const CustomNode = ({ data, selected }: any) => {
       </div>
 
       <div className="absolute top-2 right-2 flex space-x-1">
-        {!isFolder && !isFile && <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></div>}
+        {!isFolder && !isFile && !isModule && <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></div>}
       </div>
 
       <Handle 

@@ -111,28 +111,35 @@ export default function ArchitecturePage({ params }: { params: { id: string } })
           
           const styledEdges = data.edges.map((e: any) => {
             const isCall = e.type === 'call';
+            const isDep = e.type === 'dependency';
             return {
               ...e,
               type: 'smoothstep',
-              animated: true,
+              animated: isCall || isDep,
               markerEnd: {
                 type: MarkerType.ArrowClosed,
                 width: 15,
                 height: 15,
-                color: isCall ? '#06b6d4' : '#a855f7',
+                color: isCall ? '#06b6d4' : (isDep ? '#f59e0b' : '#a855f7'),
               },
               style: isCall ? {
                 strokeWidth: 3,
                 stroke: '#06b6d4',
                 filter: 'drop-shadow(0 0 10px #06b6d4)',
                 opacity: 0.9,
+              } : (isDep ? {
+                strokeWidth: 2.5,
+                stroke: '#f59e0b',
+                strokeDasharray: '4,4',
+                filter: 'drop-shadow(0 0 8px rgba(245, 158, 11, 0.4))',
+                opacity: 0.85,
               } : {
                 strokeWidth: 2,
                 stroke: '#a855f7',
                 strokeDasharray: '8,8',
                 filter: 'drop-shadow(0 0 5px rgba(168, 85, 247, 0.5))',
                 opacity: 0.7,
-              },
+              }),
             };
           });
 
